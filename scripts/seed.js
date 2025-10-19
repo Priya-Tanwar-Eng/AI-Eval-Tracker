@@ -1,124 +1,70 @@
 const { createClient } = require('@supabase/supabase-js')
-const readline = require('readline')
 require('dotenv').config({ path: '.env.local' })
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-})
+const DEMO_EMAIL = 'demo@test.com'
+const DEMO_PASSWORD = 'demo1234'
 
-function question(query) {
-  return new Promise(resolve => rl.question(query, resolve))
-}
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-async function seed() {
-  console.log('🌱 Starting seed...\n')
-
-  // Ask for credentials
-  const email = await question('Enter your email: ')
-  const password = await question('Enter your password: ')
-  
-  console.log('\nLogging in...')
+async function seedProduction() {
+  console.log(' Production Seed - AI Eval Tracker\n')
 
   // Login
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password: password.trim()
+    email: DEMO_EMAIL,
+    password: DEMO_PASSWORD
   })
 
   if (authError) {
-    console.error('❌ Login failed:', authError.message)
-    rl.close()
+    console.error(' Login failed:', authError.message)
+    console.log('  First create this demo user on your live site!')
     return
   }
 
-  console.log('✅ Logged in as:', authData.user.email)
+  console.log(' Logged in:', authData.user.email)
 
-  // Generate 100 evaluations over the last 14 days
+  // Clear old data
+  await supabase.from('evaluations').delete().eq('user_id', authData.user.id)
+
   const evaluations = []
-  const prompts = [
-    'What is machine learning?',
-    'Explain quantum computing',
-    'How does blockchain work?',
-    'What is artificial intelligence?',
-    'Describe neural networks',
-    'What is deep learning?',
-    'Explain natural language processing',
-    'How do transformers work?',
-    'What is computer vision?',
-    'Describe reinforcement learning'
+  const data = [
+    { prompt: 'What is machine learning?', response: 'ML is a subset of AI that learns from data...' },
+    { prompt: 'Explain quantum computing', response: 'Quantum computing uses quantum mechanics...' },
+    { prompt: 'How does blockchain work?', response: 'Blockchain is a distributed ledger...' },
+    { prompt: 'What is AI?', response: 'AI simulates human intelligence...' },
+    { prompt: 'Describe neural networks', response: 'Neural networks are inspired by biological neurons...' }
   ]
 
-  const responses = [
-    'Machine learning is a subset of AI that enables systems to learn from data...',
-    'Quantum computing uses quantum mechanics principles like superposition...',
-    'Blockchain is a distributed ledger technology that ensures transparency...',
-    'AI is the simulation of human intelligence in machines...',
-    'Neural networks are computing systems inspired by biological neural networks...',
-    'Deep learning uses multiple layers to progressively extract features...',
-    'NLP enables computers to understand and process human language...',
-    'Transformers use attention mechanisms to process sequential data...',
-    'Computer vision enables machines to interpret visual information...',
-    'Reinforcement learning trains agents through rewards and penalties...'
-  ]
-
-  console.log('\n📊 Generating 100 evaluations over the last 14 days...\n')
-
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 50; i++) {
     const daysAgo = Math.floor(Math.random() * 14)
     const date = new Date()
     date.setDate(date.getDate() - daysAgo)
-    date.setHours(Math.floor(Math.random() * 24))
-    date.setMinutes(Math.floor(Math.random() * 60))
 
-    const score = (Math.random() * 0.4 + 0.6).toFixed(2) // 0.6 to 1.0
-    const hasPii = Math.random() > 0.9
+    const item = data[i % data.length]
 
     evaluations.push({
       user_id: authData.user.id,
-      interaction_id: `int_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
-      prompt: prompts[i % prompts.length],
-      response: responses[i % responses.length],
-      score: parseFloat(score),
-      latency_ms: Math.floor(Math.random() * 500 + 100), // 100-600ms
-      flags: Math.random() > 0.85 ? ['accuracy_concern'] : [],
-      pii_tokens_redacted: hasPii ? Math.floor(Math.random() * 5 + 1) : 0,
+      interaction_id: `prod_${Date.now()}_${i}`,
+      prompt: item.prompt,
+      response: item.response,
+      score: parseFloat((Math.random() * 0.3 + 0.7).toFixed(2)),
+      latency_ms: Math.floor(Math.random() * 400 + 150),
+      flags: [],
+      pii_tokens_redacted: 0,
       created_at: date.toISOString()
     })
   }
 
-  // Insert in batches
-  const batchSize = 20
-  let successCount = 0
+  const { error } = await supabase.from('evaluations').insert(evaluations)
 
-  for (let i = 0; i < evaluations.length; i += batchSize) {
-    const batch = evaluations.slice(i, i + batchSize)
-    const { error } = await supabase
-      .from('evaluations')
-      .insert(batch)
-
-    if (error) {
-      console.error('❌ Error inserting batch:', error.message)
-    } else {
-      successCount += batch.length
-      process.stdout.write(`\r✅ Inserted: ${successCount}/${evaluations.length} evaluations`)
-    }
+  if (error) {
+    console.error(' Error:', error.message)
+  } else {
+    console.log(' Inserted 50 evaluations for demo account\n')
   }
-
-  console.log('\n\n🎉 Seed completed successfully!')
-  console.log(`📈 Total evaluations inserted: ${successCount}`)
-  console.log('\n💡 Refresh your dashboard to see the data!\n')
-
-  rl.close()
 }
 
-seed().catch(error => {
-  console.error('❌ Seed failed:', error)
-  rl.close()
-  process.exit(1)
-})
+seedProduction()
